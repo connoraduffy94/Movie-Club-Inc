@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function str(v, max) { return v is string && v.size() <= max; }
+
+    match /movies/{movieId} {
+      allow read: if true;
+
+      // Anyone signed in (anonymous is fine) can suggest a film.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['title','year','runtime','link','pitch','submittedBy','submittedByUid','votes','status','createdAt'])
+        && str(request.resource.data.title, 150) && request.resource.data.title.size() > 0
+        && str(request.resource.data.link, 300)
+        && str(request.resource.data.pitch, 300)
+        && str(request.resource.data.submittedBy, 40)
+        && request.resource.data.submittedByUid == request.auth.uid
+        && request.resource.data.votes == []
+        && request.resource.data.status == 'pending';
+
+      allow update: if signedIn() && (
+        // Voting: only the votes list changes, and only your own id is added or removed.
+        ( request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes'])
+          && request.resource.data.votes.toSet().difference(resource.data.votes.toSet()).hasOnly([request.auth.uid])
+          && resource.data.votes.toSet().difference(request.resource.data.votes.toSet()).hasOnly([request.auth.uid]) )
+        ||
+        // Resetting votes for a new round: clears the whole list.
+        ( request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes','roundStartedAt'])
+          && request.resource.data.votes == []
+          && request.resource.data.roundStartedAt is int )
+        ||
+        // Marking watched / back to shortlist.
+        ( request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','watchedAt'])
+          && request.resource.data.status in ['pending','watched'] )
+      );
+
+      // Only the person who suggested a film can delete it.
+      allow delete: if signedIn() && resource.data.submittedByUid == request.auth.uid;
+    }
+
+    match /meta/nextNight {
+      allow read: if true;
+      allow write: if signedIn()
+        && request.resource.data.keys().hasOnly(['datetime','location','notes','movieId','movieTitle','updatedBy','updatedAt'])
+        && str(request.resource.data.location, 120)
+        && str(request.resource.data.notes, 200);
+    }
+  }
+}

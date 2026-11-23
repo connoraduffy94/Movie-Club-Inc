@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#4a63a8">
+  <title>Movie Club</title>
+  <meta name="description" content="Submit films, vote on the shortlist and see when the next movie night is.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Painted alpenglow background: warped colour washes + brush strokes + canvas grain -->
+  <div class="painting" aria-hidden="true">
+    <svg viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#4a63a8"/>
+          <stop offset=".3" stop-color="#7b8fd0"/>
+          <stop offset=".58" stop-color="#c98aae"/>
+          <stop offset=".82" stop-color="#ee9d8b"/>
+          <stop offset="1" stop-color="#f6b99c"/>
+        </linearGradient>
+        <!-- Wobbly, bleeding edges like wet paint -->
+        <filter id="wash" x="-30%" y="-30%" width="160%" height="160%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.006" numOctaves="4" seed="7" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="170" xChannelSelector="R" yChannelSelector="G" result="d"/>
+          <feGaussianBlur in="d" stdDeviation="22"/>
+        </filter>
+        <!-- Streaky bristle texture for brush strokes -->
+        <filter id="brush" x="-20%" y="-50%" width="140%" height="200%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.09" numOctaves="3" seed="3" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="55" xChannelSelector="R" yChannelSelector="G" result="d"/>
+          <feGaussianBlur in="d" stdDeviation="3"/>
+        </filter>
+        <!-- Mottled pigment variation -->
+        <filter id="mottle" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="5" seed="11"/>
+          <feColorMatrix values="0 0 0 0 1  0 0 0 0 .85  0 0 0 0 .9  0 0 0 .55 -.18"/>
+        </filter>
+      </defs>
+
+      <rect width="1000" height="1000" fill="url(#sky)"/>
+
+      <!-- Colour washes -->
+      <g filter="url(#wash)">
+        <ellipse cx="180" cy="160" rx="300" ry="190" fill="#7fa8ff" opacity=".65"/>
+        <ellipse cx="820" cy="120" rx="260" ry="170" fill="#a7b4ff" opacity=".55"/>
+        <ellipse cx="560" cy="330" rx="330" ry="150" fill="#f4a6c6" opacity=".55"/>
+        <ellipse cx="150" cy="560" rx="260" ry="220" fill="#ff7eb3" opacity=".45"/>
+        <ellipse cx="840" cy="560" rx="280" ry="200" fill="#ff8a76" opacity=".5"/>
+        <ellipse cx="480" cy="760" rx="380" ry="170" fill="#ffb38f" opacity=".55"/>
+        <ellipse cx="120" cy="900" rx="260" ry="150" fill="#8fb0ff" opacity=".45"/>
+        <ellipse cx="880" cy="920" rx="240" ry="140" fill="#f4a6c6" opacity=".55"/>
+      </g>
+
+      <!-- Sweeping brush strokes -->
+      <g filter="url(#brush)" fill="none" stroke-linecap="round">
+        <path d="M-50 260 C 200 200, 420 320, 680 250 S 980 180, 1060 230" stroke="#ffd1dc" stroke-width="46" opacity=".35"/>
+        <path d="M-40 470 C 180 430, 380 520, 620 470 S 900 400, 1050 450" stroke="#ff9a8b" stroke-width="34" opacity=".35"/>
+        <path d="M-60 660 C 160 700, 400 610, 640 680 S 920 740, 1060 690" stroke="#b7c6ff" stroke-width="40" opacity=".32"/>
+        <path d="M-40 850 C 220 800, 460 900, 720 840 S 960 780, 1050 820" stroke="#ffc2a8" stroke-width="52" opacity=".35"/>
+        <path d="M120 -40 C 160 220, 60 420, 140 700" stroke="#ff7eb3" stroke-width="24" opacity=".18"/>
+        <path d="M880 -40 C 820 240, 920 480, 860 760" stroke="#7fa8ff" stroke-width="28" opacity=".2"/>
+      </g>
+
+      <!-- Pigment mottling -->
+      <rect width="1000" height="1000" filter="url(#mottle)" opacity=".35" style="mix-blend-mode:soft-light"/>    </svg>
+  </div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="wrap header-row">
+      <h1 class="logo"><span aria-hidden="true">🎬</span> <span class="logo-text">Movie Club</span></h1>
+      <div class="whoami" id="whoami"></div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div id="banner" class="banner" hidden></div>
+
+    <!-- Next movie night -->
+    <section class="marquee" aria-labelledby="night-heading">
+      <p class="eyebrow">Next movie night</p>
+      <div id="night"><p class="muted">Loading…</p></div>
+      <details class="night-edit" id="night-edit">
+        <summary>Set or change movie night</summary>
+        <form id="night-form" class="form">
+          <div class="row2">
+            <label>Date &amp; time
+              <input type="datetime-local" name="datetime" required>
+            </label>
+            <label>Where
+              <input type="text" name="location" maxlength="120" placeholder="Sam's place">
+            </label>
+          </div>
+          <label>Film
+            <select name="movieId"></select>
+          </label>
+          <label>Notes
+            <input type="text" name="notes" maxlength="200" placeholder="Bring snacks · starts at 8 sharp">
+          </label>
+          <div class="actions">
+            <button type="submit" class="btn primary">Save movie night</button>
+            <button type="button" class="btn ghost" id="pick-top">Pick top-voted film</button>
+          </div>
+        </form>
+      </details>
+    </section>
+
+    <main class="grid">
+      <!-- Ballot -->
+      <section class="card ballot" aria-labelledby="ballot-heading">
+        <div class="card-head">
+          <div class="card-head-row">
+            <h2 id="ballot-heading">The shortlist</h2>
+            <button type="button" class="btn small ghost" id="reset-votes" hidden title="Clear everyone's votes and start a new round">↺ Reset votes</button>
+          </div>
+          <p class="muted small">Vote for as many as you like. Click again to take your vote back.</p>
+        </div>
+        <ol id="ballot" class="ballot-list"></ol>
+        <div id="more" class="more"></div>
+        <details id="dusty" class="dusty" hidden>
+          <summary>Gathering dust (<span id="dusty-count">0</span>) <span class="muted small">· no votes in 2+ months. Vote for one to bring it back.</span></summary>
+          <ul id="dusty-list" class="ballot-list"></ul>
+        </details>
+      </section>
+
+      <!-- Submit -->
+      <aside class="card submit" aria-labelledby="submit-heading">
+        <h2 id="submit-heading">Suggest a film</h2>
+        <form id="movie-form" class="form">
+          <label>Title
+            <input type="text" name="title" required maxlength="150" placeholder="e.g. Paddington 2">
+          </label>
+          <div class="row2">
+            <label>Year
+              <input type="number" name="year" min="1888" max="2100" placeholder="2017">
+            </label>
+            <label>Runtime (mins)
+              <input type="number" name="runtime" min="1" max="600" placeholder="103">
+            </label>
+          </div>
+          <label>Link <span class="muted small">(trailer, Letterboxd, etc. Optional)</span>
+            <input type="url" name="link" maxlength="300" placeholder="https://…">
+          </label>
+          <label>Why we should watch it
+            <textarea name="pitch" rows="3" maxlength="300" placeholder="Optional pitch"></textarea>
+          </label>
+          <button type="submit" class="btn primary block">Add to shortlist</button>
+        </form>
+      </aside>
+    </main>
+
+    <!-- History -->
+    <section class="card history" aria-labelledby="history-heading">
+      <h2 id="history-heading">Already watched</h2>
+      <ul id="history" class="history-list"></ul>
+    </section>
+
+    <footer class="site-footer muted small" id="footer"></footer>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
