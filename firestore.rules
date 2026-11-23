@@ -3,13 +3,17 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    // A member is a browser that has entered the club passcode (see /members below).
+    function isMember() {
+      return signedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
     function str(v, max) { return v is string && v.size() <= max; }
 
     match /movies/{movieId} {
-      allow read: if true;
+      allow read: if isMember();
 
-      // Anyone signed in (anonymous is fine) can suggest a film.
-      allow create: if signedIn()
+      // Any member can suggest a film.
+      allow create: if isMember()
         && request.resource.data.keys().hasOnly(['title','year','runtime','link','pitch','submittedBy','submittedByUid','votes','status','createdAt'])
         && str(request.resource.data.title, 150) && request.resource.data.title.size() > 0
         && str(request.resource.data.link, 300)
@@ -19,7 +23,7 @@ service cloud.firestore {
         && request.resource.data.votes == []
         && request.resource.data.status == 'pending';
 
-      allow update: if signedIn() && (
+      allow update: if isMember() && (
         // Voting: only the votes list changes, and only your own id is added or removed.
         ( request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes'])
           && request.resource.data.votes.toSet().difference(resource.data.votes.toSet()).hasOnly([request.auth.uid])
@@ -36,15 +40,31 @@ service cloud.firestore {
       );
 
       // Only the person who suggested a film can delete it.
-      allow delete: if signedIn() && resource.data.submittedByUid == request.auth.uid;
+      allow delete: if isMember() && resource.data.submittedByUid == request.auth.uid;
     }
 
     match /meta/nextNight {
-      allow read: if true;
-      allow write: if signedIn()
+      allow read: if isMember();
+      allow write: if isMember()
         && request.resource.data.keys().hasOnly(['datetime','location','notes','movieId','movieTitle','updatedBy','updatedAt'])
         && str(request.resource.data.location, 120)
         && str(request.resource.data.notes, 200);
+    }
+
+    // The club passcode lives in config/club { code: "..." }. Create it by hand in the
+    // Firebase console. Nobody can read it from the website; the rule below only compares it.
+    match /config/{doc} {
+      allow read, write: if false;
+    }
+
+    // Joining: a browser can create its own member record only if it knows the passcode.
+    // To kick someone out, delete their document here in the Firebase console.
+    match /members/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['code','name','joinedAt'])
+        && str(request.resource.data.name, 40)
+        && request.resource.data.code == get(/databases/$(database)/documents/config/club).data.code;
     }
   }
 }

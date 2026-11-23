@@ -18,6 +18,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -75,6 +76,10 @@ h2 { font-size: 1.9rem; }
 
 /* Banner */
 .banner { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--rose); border-radius: var(--radius); color: var(--rose); background: rgba(30,40,80,.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font-size: .9rem; }
+
+/* Passcode gate */
+.gate { max-width: 440px; margin: 48px auto; }
+.gate h2 { margin-bottom: 6px; }
 
 /* Marquee / next night: glass card with a flowing alpenglow border */
 .marquee {

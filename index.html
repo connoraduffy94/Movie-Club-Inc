@@ -82,6 +82,23 @@
   <div class="wrap">
     <div id="banner" class="banner" hidden></div>
 
+    <!-- Passcode gate: shown until this browser has entered the club passcode -->
+    <section id="gate" class="card gate" hidden aria-labelledby="gate-heading">
+      <h2 id="gate-heading">Members only 🍿</h2>
+      <p class="muted">This is a private movie club. Enter the club passcode to join. You'll only need to do this once on each device.</p>
+      <form id="gate-form" class="form">
+        <label>Your name
+          <input type="text" name="name" maxlength="40" required autocomplete="nickname">
+        </label>
+        <label>Club passcode
+          <input type="password" name="code" required autocomplete="off">
+        </label>
+        <button type="submit" class="btn primary block">Join the club</button>
+      </form>
+    </section>
+
+    <div id="club" hidden>
+
     <!-- Next movie night -->
     <section class="marquee" aria-labelledby="night-heading">
       <p class="eyebrow">Next movie night</p>
@@ -160,6 +177,8 @@
       <h2 id="history-heading">Already watched</h2>
       <ul id="history" class="history-list"></ul>
     </section>
+
+    </div>
 
     <footer class="site-footer muted small" id="footer"></footer>
   </div>

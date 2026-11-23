@@ -28,7 +28,8 @@ Then open http://localhost:8000. (Opening `index.html` directly won't work, beca
 2. **Firestore Database → Create database.** Pick a location near you (e.g. `europe-west2` London) and start in **production mode**.
 3. **Authentication → Get started → Sign-in method → Anonymous → Enable.** This gives each browser an invisible ID, so people can't vote twice. Nobody has to make an account.
 4. **Firestore → Rules tab:** replace everything with the contents of [`firestore.rules`](firestore.rules), then **Publish**.
-5. **Project settings (⚙️) → General → Your apps → Web (`</>`)**: register an app (no hosting needed). Copy the `firebaseConfig` values into [`firebase-config.js`](firebase-config.js).
+5. **Set the club passcode.** In **Firestore Database → Data**, click **+ Start collection**. Collection ID: `config`. Document ID: `club`. Add one field: name `code`, type **string**, value your passcode **in lowercase**, e.g. `popcorn and pickles`. Save. (What people type is lowercased, so the passcode isn't case-sensitive.)
+6. **Project settings (⚙️) → General → Your apps → Web (`</>`)**: register an app (no hosting needed). Copy the `firebaseConfig` values into [`firebase-config.js`](firebase-config.js).
 
 > The Firebase web config isn't a secret. It's designed to be public, and the security rules are what protect the data.
 
@@ -66,14 +67,19 @@ Share the link with the club. Updates appear for everyone instantly, with no ref
 - `movies/{id}`: `title, year, runtime, link, pitch, submittedBy, submittedByUid, votes[], status ('pending'|'watched'), createdAt, watchedAt, roundStartedAt`
 - `meta/nextNight`: `datetime (ISO), location, notes, movieId, movieTitle, updatedBy, updatedAt`
 
+- `members/{uid}`: `name, code, joinedAt`: one per browser that has entered the passcode
+- `config/club`: `code`: the club passcode (set by hand, unreadable from the site)
+
 **What the rules enforce**
-- Anyone with the link can read.
+- Only **members** (browsers that entered the passcode) can see or change anything. Strangers with the link see only the passcode screen.
 - Each browser can add or remove **only its own vote**.
 - Only the person who suggested a film can delete it.
 - Field sizes are capped. Anyone can set the movie night, mark a film as watched, or reset all votes.
 
 ## Good to know
-- **It's trust-based.** Anyone with the link can vote, and someone could vote again from a different browser or a private window. That's fine for a group of friends. Keep the link within the club.
+- **Passcode.** Share it only with the club. To **change it**, edit `config/club` in the Firebase console. That stops new people joining with the old code, but anyone who already joined stays in.
+- **Removing someone:** in **Firestore Database → Data → members**, find their document (it shows their name) and delete it. They'll need the current passcode to get back in.
+- **Voting is trust-based.** A member could vote again from a different browser or a private window. That's fine for a group of friends.
 - **Reset votes** clears everyone's votes on the whole shortlist (it asks first). The films stay. Agree as a club when to use it, e.g. after each movie night.
 - To change "top 10" or the 2-month cut-off, edit `TOP_N` and `DUSTY_AFTER` at the top of `app.js`.
 - Names are typed in and remembered per browser. They aren't verified.

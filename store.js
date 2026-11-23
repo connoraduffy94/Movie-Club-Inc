@@ -31,10 +31,20 @@ async function createFirebaseStore() {
   const moviesCol = fs.collection(db, "movies");
   const nightRef = fs.doc(db, "meta", "nextNight");
   const movieRef = (id) => fs.doc(db, "movies", id);
+  const memberRef = fs.doc(db, "members", uid);
+
+  // Has this browser already entered the club passcode?
+  const memberSnap = await fs.getDoc(memberRef);
 
   return {
     mode: "firebase",
     uid,
+    isMember: memberSnap.exists(),
+    // The rules only allow this write if `code` matches the passcode stored in config/club.
+    async join(code, name) {
+      await fs.setDoc(memberRef, { code, name, joinedAt: Date.now() });
+      this.isMember = true;
+    },
     onMovies(cb, onErr) {
       return fs.onSnapshot(moviesCol, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), onErr);
     },
@@ -103,6 +113,8 @@ function createDemoStore() {
   return {
     mode: "demo",
     uid,
+    isMember: true,           // no passcode in demo mode
+    async join() {},
     onMovies(cb) { movieSubs.add(cb); cb(structuredClone(state.movies)); return () => movieSubs.delete(cb); },
     onNight(cb) { nightSubs.add(cb); cb(state.night ? structuredClone(state.night) : null); return () => nightSubs.delete(cb); },
     async addMovie(m) {

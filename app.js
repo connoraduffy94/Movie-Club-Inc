@@ -343,7 +343,9 @@ async function main() {
     store = await createStore();
   } catch (err) {
     console.error(err);
-    $("#night").innerHTML = `<p>Couldn't connect to the database. Check firebase-config.js and that Anonymous sign-in is enabled (see README).</p>`;
+    const b = $("#banner");
+    b.hidden = false;
+    b.textContent = "Couldn't connect to the database. Check your internet connection and try again. (Admin: check firebase-config.js and that Anonymous sign-in is enabled; see README.)";
     return;
   }
   if (store.mode === "demo") {
@@ -352,8 +354,44 @@ async function main() {
     b.innerHTML = "<strong>Demo mode:</strong> changes are only saved in this browser. Add your Firebase settings to <code>firebase-config.js</code> so the whole club can share it (see README).";
   }
   $("#footer").textContent = store.mode === "demo" ? "Demo mode · local only" : "Live · updates for everyone automatically";
+  if (store.isMember) start();
+  else showGate();
+}
+
+function start() {
+  $("#gate").hidden = true;
+  $("#club").hidden = false;
+  $("#whoami").hidden = false;
   store.onMovies((m) => { movies = m; renderAll(); }, fail);
   store.onNight((n) => { night = n; renderAll(); }, fail);
+}
+
+function showGate() {
+  $("#gate").hidden = false;
+  $("#club").hidden = true;
+  $("#whoami").hidden = true;
+  const f = $("#gate-form");
+  f.name.value = getName();
+  (f.name.value ? f.code : f.name).focus();
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const name = f.name.value.trim();
+    const code = f.code.value.trim().toLowerCase();   // passcodes are not case-sensitive
+    if (!name || !code) return;
+    const btn = f.querySelector("button");
+    btn.disabled = true;
+    try {
+      await store.join(code, name);
+      setName(name);
+      renderWhoami();
+      toast(`Welcome to the club, ${name}!`);
+      start();
+    } catch (err) {
+      console.error(err);
+      toast(err?.code === "permission-denied" ? "That passcode isn't right" : "Couldn't join. Please try again.", true);
+      f.code.select();
+    } finally { btn.disabled = false; }
+  };
 }
 
 main();
