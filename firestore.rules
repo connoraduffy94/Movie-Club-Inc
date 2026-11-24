@@ -9,6 +9,16 @@ service cloud.firestore {
     }
     function str(v, max) { return v is string && v.size() <= max; }
 
+    function nightPath() { return /databases/$(database)/documents/meta/nextNight; }
+    function roundPath() { return /databases/$(database)/documents/meta/round; }
+    // Voting is open unless a movie night is set and its closing time has passed.
+    function votingOpen() {
+      return !exists(nightPath())
+        || get(nightPath()).data.get('closesAt', null) == null
+        || request.time.toMillis() < get(nightPath()).data.closesAt;
+    }
+
+    // ---------- The film bank ----------
     match /movies/{movieId} {
       allow read: if isMember();
 
@@ -24,17 +34,12 @@ service cloud.firestore {
         && request.resource.data.status == 'pending';
 
       allow update: if isMember() && (
-        // Voting: only the votes list changes, and only your own id is added or removed.
+        // Stars ("I'd watch this"): only the votes list changes, and only your own id is added or removed.
         ( request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes'])
           && request.resource.data.votes.toSet().difference(resource.data.votes.toSet()).hasOnly([request.auth.uid])
           && resource.data.votes.toSet().difference(request.resource.data.votes.toSet()).hasOnly([request.auth.uid]) )
         ||
-        // Resetting votes for a new round: clears the whole list.
-        ( request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes','roundStartedAt'])
-          && request.resource.data.votes == []
-          && request.resource.data.roundStartedAt is int )
-        ||
-        // Marking watched / back to shortlist.
+        // Marking watched / back to the bank.
         ( request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','watchedAt'])
           && request.resource.data.status in ['pending','watched'] )
       );
@@ -43,14 +48,42 @@ service cloud.firestore {
       allow delete: if isMember() && resource.data.submittedByUid == request.auth.uid;
     }
 
+    // ---------- Next movie night ----------
     match /meta/nextNight {
       allow read: if isMember();
       allow write: if isMember()
-        && request.resource.data.keys().hasOnly(['datetime','location','notes','movieId','movieTitle','updatedBy','updatedAt'])
+        && request.resource.data.keys().hasOnly(['datetime','location','notes','closesAt','movieId','movieTitle','updatedBy','updatedAt'])
+        && str(request.resource.data.datetime, 40)
         && str(request.resource.data.location, 120)
-        && str(request.resource.data.notes, 200);
+        && str(request.resource.data.notes, 200)
+        && (request.resource.data.get('closesAt', null) == null || request.resource.data.closesAt is int);
     }
 
+    // ---------- The current round's ballot ----------
+    match /meta/round {
+      allow read: if isMember();
+      allow write: if isMember()
+        && request.resource.data.keys().hasOnly(['id','number','films','skipped','startedAt'])
+        && request.resource.data.id is string
+        && request.resource.data.films is list && request.resource.data.films.size() <= 8
+        && request.resource.data.skipped is list && request.resource.data.skipped.size() <= 100;
+    }
+
+    // ---------- Votes: one ballot per member per round, max 3 picks ----------
+    match /rounds/{roundId}/ballots/{uid} {
+      allow read: if isMember();
+      allow create, update: if isMember() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['picks','name','updatedAt'])
+        && str(request.resource.data.name, 40)
+        && request.resource.data.picks is list
+        && request.resource.data.picks.size() <= 3
+        && request.resource.data.picks.toSet().size() == request.resource.data.picks.size()
+        && roundId == get(roundPath()).data.id
+        && get(roundPath()).data.films.hasAll(request.resource.data.picks)
+        && votingOpen();
+    }
+
+    // ---------- Passcode ----------
     // The club passcode lives in config/club { code: "..." }. Create it by hand in the
     // Firebase console. Nobody can read it from the website; the rule below only compares it.
     match /config/{doc} {

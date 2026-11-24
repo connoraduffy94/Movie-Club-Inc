@@ -1,22 +1,33 @@
 import { createStore } from "./store.js";
 
+/* ---------- settings ---------- */
+const BALLOT_SIZE = 6;          // films on each round's ballot
+const BY_STARS = 4;             // ...of which this many are the most-starred (the rest are the longest-waiting)
+const VOTES_EACH = 3;           // votes per person per round
+const CLOSE_BEFORE = 24 * 36e5; // voting closes this long before movie night
+const BANK_SHOW = 15;           // films shown in the bank before "Show all"
+
 const $ = (sel) => document.querySelector(sel);
 const NAME_KEY = "movieclub-name";
 
 let store;
 let movies = [];
 let night = null;
-let countdownTimer = null;
+let round = null;
+let ballots = [];
+let loaded = { movies: false, round: false };
+let ballotsUnsub = null, ballotsRoundId = null;
 let showAll = false;
-
-const TOP_N = 10;                 // films shown before "Show all"
-const DUSTY_AFTER = 60 * 864e5;   // no votes for ~2 months → "Gathering dust"
+let search = "";
+let reconcileBusy = false, reconcileFailed = false;
 
 /* ---------- helpers ---------- */
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "");
 const getName = () => { try { return localStorage.getItem(NAME_KEY) || ""; } catch { return ""; } };
 const setName = (n) => { try { localStorage.setItem(NAME_KEY, n); } catch { /* ignore */ } };
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const fmtWhen = (t) => new Date(t).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 function toast(msg, isError = false) {
   const t = $("#toast");
@@ -24,25 +35,13 @@ function toast(msg, isError = false) {
   t.classList.toggle("error", isError);
   t.classList.add("show");
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+  toast._t = setTimeout(() => t.classList.remove("show"), 2800);
 }
 
 function fail(err) {
   console.error(err);
-  toast(err?.code === "permission-denied" ? "Not allowed. Check the Firestore rules." : "Something went wrong. Please try again.", true);
+  toast(err?.code === "permission-denied" ? "Not allowed. Voting may have closed, or the Firestore rules need updating." : "Something went wrong. Please try again.", true);
 }
-
-const pending = () => movies.filter((m) => m.status !== "watched")
-  .sort((a, b) => (b.votes?.length || 0) - (a.votes?.length || 0) || a.createdAt - b.createdAt);
-// Films on the shortlist that belong to me: added from this browser, or under my name (e.g. from my other device).
-const myPicks = () => {
-  const name = getName().trim().toLowerCase();
-  return pending().filter((m) => m.submittedByUid === store?.uid
-    || (name && (m.submittedBy || "").trim().toLowerCase() === name));
-};
-
-// A film is dusty if nobody has voted for it and it was added (or votes were last reset) over 2 months ago.
-const isDusty = (m) => !(m.votes?.length) && Date.now() - Math.max(m.createdAt || 0, m.roundStartedAt || 0) > DUSTY_AFTER;
 
 function ago(t) {
   if (!t) return "";
@@ -55,8 +54,97 @@ function ago(t) {
   return `${Math.floor(days / 365)} years ago`;
 }
 
+/* ---------- derived data ---------- */
+const byId = (id) => movies.find((m) => m.id === id);
+const stars = (m) => m.votes?.length || 0;
+// Film bank: everything not yet watched. Most stars first, then longest-waiting.
+const bank = () => movies.filter((m) => m.status !== "watched")
+  .sort((a, b) => stars(b) - stars(a) || a.createdAt - b.createdAt);
 const watched = () => movies.filter((m) => m.status === "watched")
   .sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
+
+const nightSet = () => Boolean(night?.datetime);
+const closesAt = () => (nightSet() && night.closesAt ? night.closesAt : null);
+const votingOpen = () => !closesAt() || Date.now() < closesAt();
+
+// Films on the current ballot that are still in the bank.
+const ballotFilms = () => (round?.films || []).map(byId).filter((m) => m && m.status !== "watched");
+
+function tally() {
+  const ids = new Set(ballotFilms().map((m) => m.id));
+  const count = {}, voters = {};
+  for (const b of ballots) {
+    for (const id of b.picks || []) {
+      if (!ids.has(id)) continue;
+      count[id] = (count[id] || 0) + 1;
+      (voters[id] ||= []).push(b.name || "someone");
+    }
+  }
+  return { count, voters };
+}
+// Ballot in ranked order. Ties go to the film that has waited longest.
+function ranked() {
+  const { count } = tally();
+  return ballotFilms().sort((a, b) => (count[b.id] || 0) - (count[a.id] || 0) || a.createdAt - b.createdAt);
+}
+const leader = () => ranked()[0] || null;
+const myPicks = () => {
+  const ids = new Set(ballotFilms().map((m) => m.id));
+  return (ballots.find((b) => b.uid === store.uid)?.picks || []).filter((id) => ids.has(id));
+};
+
+/* ---------- choosing a ballot ---------- */
+// Keep `keep`, then fill up to BALLOT_SIZE: most-starred first (up to BY_STARS), then longest-waiting.
+// At most one film per person who suggested it, unless there aren't enough films otherwise.
+function pickBallot(keep = [], exclude = []) {
+  const who = (m) => (m.submittedBy || "").trim().toLowerCase() || m.submittedByUid;
+  const chosen = keep.map(byId).filter((m) => m && m.status !== "watched");
+  const used = new Set(chosen.map(who));
+  const skip = new Set([...exclude, ...chosen.map((m) => m.id)]);
+  const pool = bank().filter((m) => !skip.has(m.id));
+  const add = (m, distinct) => {
+    if (chosen.length >= BALLOT_SIZE || chosen.includes(m)) return;
+    if (distinct && used.has(who(m))) return;
+    chosen.push(m); used.add(who(m));
+  };
+  for (const m of pool) { if (chosen.length >= BY_STARS || !stars(m)) break; add(m, true); }
+  const oldest = [...pool].sort((a, b) => a.createdAt - b.createdAt);
+  oldest.forEach((m) => add(m, true));
+  oldest.forEach((m) => add(m, false));
+  return chosen.map((m) => m.id);
+}
+
+const newRound = (prev, exclude = []) => ({
+  id: "r" + Date.now(),
+  number: (prev?.number || 0) + 1,
+  films: pickBallot([], exclude),
+  skipped: [],
+  startedAt: Date.now(),
+});
+const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+// Start the first round automatically, and top up an under-full ballot while voting is open.
+async function reconcile() {
+  if (!loaded.movies || !loaded.round || reconcileBusy || reconcileFailed) return;
+  let fn = null;
+  if (!round) {
+    if (bank().length) fn = (cur) => (cur ? null : newRound(null));
+  } else if (votingOpen() && ballotFilms().length < BALLOT_SIZE) {
+    const active = ballotFilms().map((m) => m.id);
+    if (pickBallot(active, round.skipped || []).length > active.length) {
+      fn = (cur) => {
+        if (!cur || cur.id !== round.id) return null;
+        const films = pickBallot(cur.films.filter((id) => byId(id)?.status === "pending"), cur.skipped || []);
+        return sameList(films, cur.films) ? null : { ...cur, films };
+      };
+    }
+  }
+  if (!fn) return;
+  reconcileBusy = true;
+  try { await store.updateRound(fn); }
+  catch (err) { reconcileFailed = true; fail(err); }
+  finally { reconcileBusy = false; }
+}
 
 /* ---------- who am I ---------- */
 function renderWhoami() {
@@ -64,13 +152,13 @@ function renderWhoami() {
   const name = getName();
   if (name) {
     el.innerHTML = `<span class="muted">Hi,</span> <strong>${esc(name)}</strong> <button class="linkish" id="change-name">change</button>`;
-    $("#change-name").onclick = () => { setName(""); renderWhoami(); renderSubmit(); };
+    $("#change-name").onclick = () => { setName(""); renderWhoami(); };
   } else {
     el.innerHTML = `<form id="name-form" class="whoami"><input name="n" maxlength="40" placeholder="Your name" required aria-label="Your name"><button class="btn small primary">Save</button></form>`;
     $("#name-form").onsubmit = (e) => {
       e.preventDefault();
       const n = e.target.n.value.trim();
-      if (n) { setName(n); renderWhoami(); renderSubmit(); toast(`Welcome, ${n}!`); }
+      if (n) { setName(n); renderWhoami(); toast(`Welcome, ${n}!`); }
     };
   }
 }
@@ -98,208 +186,243 @@ function gcalLink(n, title) {
   return `https://calendar.google.com/calendar/render?${p}`;
 }
 
+function countdown(when) {
+  const ms = when - Date.now();
+  if (ms <= 0) return { text: ms > -4 * 3600e3 ? "Happening now 🍿" : "This night has passed", past: true };
+  const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5), m = Math.floor((ms % 36e5) / 6e4);
+  return { text: d > 0 ? `in ${d}d ${h}h` : h > 0 ? `in ${h}h ${m}m` : `in ${m} min`, past: false };
+}
+
 function renderNight() {
   const el = $("#night");
-  clearInterval(countdownTimer);
-  if (!night || !night.datetime) {
-    el.innerHTML = `<div class="night-title">Not scheduled yet</div><p class="muted">Use "Set or change movie night" below to pick a date.</p>`;
+  const top = leader();
+  const { count } = tally();
+  const leadLine = top
+    ? `Currently leading: <strong>${esc(top.title)}</strong> (${plural(count[top.id] || 0, "vote")})`
+    : "No films on the ballot yet. Suggest one below!";
+
+  if (!nightSet()) {
+    el.innerHTML = `
+      <div class="night-title">Not scheduled yet</div>
+      <p class="muted" style="margin:0">Voting is open. It closes 24 hours before the next movie night, once one is set.</p>
+      <p style="margin:8px 0 0">🗳 ${leadLine}</p>`;
     return;
   }
-  const film = movies.find((m) => m.id === night.movieId);
-  const title = film ? film.title : night.movieTitle || "Film to be decided";
+
+  const open = votingOpen();
   const when = new Date(night.datetime);
-  const whenStr = when.toLocaleString(undefined, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-  const cal = gcalLink(night, title);
-  const canMarkWatched = film && film.status !== "watched";
+  const title = open ? "Film decided by vote" : top ? top.title : "No film chosen";
+  const cal = gcalLink(night, open ? "" : top?.title);
+  const cd = countdown(when);
 
   el.innerHTML = `
-    <div class="night-title">${esc(title)}${film?.year ? ` <span class="muted">(${esc(film.year)})</span>` : ""}</div>
+    <div class="night-title">${esc(title)}${!open && top?.year ? ` <span class="muted">(${esc(top.year)})</span>` : ""}</div>
     <div class="night-meta">
-      <span>📅 ${esc(whenStr)}</span>
+      <span>📅 ${esc(when.toLocaleString(undefined, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }))}</span>
       ${night.location ? `<span>📍 ${esc(night.location)}</span>` : ""}
-      ${film?.runtime ? `<span>⏱ ${esc(film.runtime)} min</span>` : ""}
+      ${!open && top?.runtime ? `<span>⏱ ${esc(top.runtime)} min</span>` : ""}
     </div>
     ${night.notes ? `<p class="muted" style="margin:8px 0 0">${esc(night.notes)}</p>` : ""}
-    <span class="countdown" id="countdown"></span>
+    <p style="margin:8px 0 0">${open
+      ? `🗳 ${leadLine}<br><span class="muted small">Voting closes ${esc(fmtWhen(closesAt()))}</span>`
+      : `🗳 <span class="muted">Voting has closed${top ? ` · ${plural(count[top.id] || 0, "vote")}` : ""}</span>`}</p>
+    <span class="countdown${cd.past ? " past" : ""}">${esc(cd.text)}</span>
     <div class="night-actions">
       ${cal ? `<a class="btn small" href="${esc(cal)}" target="_blank" rel="noopener">Add to Google Calendar</a>` : ""}
-      ${safeUrl(film?.link) ? `<a class="btn small" href="${esc(film.link)}" target="_blank" rel="noopener">Film link</a>` : ""}
-      ${canMarkWatched ? `<button class="btn small ghost" id="mark-watched">We watched it ✓</button>` : ""}
+      ${!open && safeUrl(top?.link) ? `<a class="btn small" href="${esc(top.link)}" target="_blank" rel="noopener">Film link</a>` : ""}
+      ${!open && top ? `<button class="btn small primary" id="finish-night">We watched it ✓ · start next round</button>` : ""}
     </div>`;
-
-  const tick = () => {
-    const c = $("#countdown");
-    if (!c) return;
-    const ms = when - Date.now();
-    if (ms <= 0) {
-      c.textContent = ms > -4 * 3600e3 ? "Happening now 🍿" : "This night has passed";
-      c.classList.add("past");
-      return;
-    }
-    const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5), m = Math.floor((ms % 36e5) / 6e4);
-    c.textContent = d > 0 ? `in ${d}d ${h}h` : h > 0 ? `in ${h}h ${m}m` : `in ${m} min`;
-  };
-  tick();
-  countdownTimer = setInterval(tick, 30e3);
-
-  $("#mark-watched")?.addEventListener("click", () => {
-    store.setStatus(film.id, "watched").then(() => toast("Moved to Already watched")).catch(fail);
-  });
 }
 
 function fillNightForm() {
   const form = $("#night-form");
-  const sel = form.movieId;
-  const current = night?.movieId || "";
-  sel.innerHTML = `<option value="">To be decided</option>` +
-    pending().map((m) => `<option value="${esc(m.id)}">${esc(m.title)} (${m.votes?.length || 0} votes)</option>`).join("");
-  sel.value = pending().some((m) => m.id === current) ? current : "";
-  if (night?.datetime && !form.datetime.value) {
+  $("#cancel-night").hidden = !nightSet();
+  if (document.activeElement?.form === form) return;   // don't overwrite while someone is typing
+  if (nightSet()) {
     const d = new Date(night.datetime);
     if (!isNaN(d)) form.datetime.value = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
+  } else {
+    form.datetime.value = "";
   }
-  if (night && document.activeElement?.form !== form) {
-    form.location.value = night.location || "";
-    form.notes.value = night.notes || "";
-  }
+  form.location.value = night?.location || "";
+  form.notes.value = night?.notes || "";
 }
 
 /* ---------- ballot ---------- */
-function movieItem(m, rank, max, topVotes) {
-  const n = m.votes?.length || 0;
-  const mine = m.votes?.includes(store.uid);
-  const leader = n > 0 && n === topVotes;
-  const isOwn = m.submittedByUid === store.uid;
-  const link = safeUrl(m.link);
-  return `
-    <li class="movie${leader ? " leader" : ""}">
-      <div class="rank">${rank ?? ""}</div>
+function renderBallot() {
+  const list = $("#ballot");
+  const open = votingOpen();
+  const films = ranked();
+  const { count, voters } = tally();
+  const mine = myPicks();
+  const left = VOTES_EACH - mine.length;
+
+  $("#round-status").textContent = round ? `Round ${round.number} · ${open ? "voting open" : "voting closed"}` : "";
+  $("#round-status").classList.toggle("closed", !open);
+  $("#ballot-help").textContent = !films.length ? ""
+    : open
+      ? `You have ${left} of ${VOTES_EACH} votes left. Click a film to vote, click again to take it back.${closesAt() ? ` Closes ${fmtWhen(closesAt())}.` : ""}`
+      : "Voting has closed. The winner is shown above.";
+
+  if (!films.length) {
+    list.innerHTML = `<li class="empty">The ballot is empty. Suggest a film below and it'll appear here.</li>`;
+    return;
+  }
+  const max = Math.max(1, ...films.map((m) => count[m.id] || 0));
+  const topVotes = count[films[0].id] || 0;
+  list.innerHTML = films.map((m, i) => {
+    const n = count[m.id] || 0;
+    const on = mine.includes(m.id);
+    const lead = i === 0 && (topVotes > 0 || !open);
+    const link = safeUrl(m.link);
+    return `
+    <li class="movie${lead ? " leader" : ""}">
+      <div class="rank">${i + 1}</div>
       <div>
         <h3>${esc(m.title)} ${m.year ? `<span class="yr">(${esc(m.year)})</span>` : ""}</h3>
         ${m.pitch ? `<p class="pitch">${esc(m.pitch)}</p>` : ""}
         <div class="meta">
-          <span>Suggested by ${esc(m.submittedBy || "someone")}${m.createdAt ? ` · ${ago(m.createdAt)}` : ""}</span>
+          <span>Suggested by ${esc(m.submittedBy || "someone")}</span>
           ${m.runtime ? `<span>${esc(m.runtime)} min</span>` : ""}
           ${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">link ↗</a>` : ""}
-          <button class="linkish" data-watched="${esc(m.id)}">mark watched ✓</button>
-          ${isOwn ? `<button class="linkish" data-remove="${esc(m.id)}">remove</button>` : ""}
+          ${open ? `<button class="linkish" data-swap="${esc(m.id)}">swap out</button>` : ""}
         </div>
+        ${n ? `<div class="voters">🗳 ${esc(voters[m.id].join(", "))}</div>` : ""}
         <div class="bar"><i style="width:${(n / max) * 100}%"></i></div>
       </div>
       <div class="vote">
-        <button class="vote-btn" data-vote="${esc(m.id)}" aria-pressed="${mine}" aria-label="${mine ? "Remove your vote for" : "Vote for"} ${esc(m.title)}">${n}<small>${n === 1 ? "vote" : "votes"}</small></button>
-        <span class="vote-label">${mine ? "voted ✓" : "vote"}</span>
+        <button class="vote-btn" data-vote="${esc(m.id)}" aria-pressed="${on}" ${open ? "" : "disabled"} aria-label="${on ? "Take back your vote for" : "Vote for"} ${esc(m.title)}">${n}<small>${n === 1 ? "vote" : "votes"}</small></button>
+        <span class="vote-label">${on ? "voted ✓" : open ? "vote" : ""}</span>
       </div>
     </li>`;
+  }).join("");
 }
 
-function renderBallot() {
-  const list = $("#ballot");
-  const all = pending();
-  const active = all.filter((m) => !isDusty(m));
-  const dusty = all.filter(isDusty);
-  const totalVotes = all.reduce((t, m) => t + (m.votes?.length || 0), 0);
-  $("#reset-votes").disabled = totalVotes === 0;
+/* ---------- film bank ---------- */
+function renderBank() {
+  const list = $("#bank");
+  const onBallot = new Set(ballotFilms().map((m) => m.id));
+  const q = search.trim().toLowerCase();
+  const all = bank().filter((m) => !q || m.title.toLowerCase().includes(q) || (m.submittedBy || "").toLowerCase().includes(q));
+  const shown = showAll || q ? all : all.slice(0, BANK_SHOW);
 
-  if (!all.length) {
-    list.innerHTML = `<li class="empty">No films on the shortlist yet. Suggest one!</li>`;
-    $("#more").innerHTML = "";
-    $("#dusty").hidden = true;
-    return;
-  }
+  list.innerHTML = shown.length ? shown.map((m) => {
+    const n = stars(m);
+    const starred = m.votes?.includes(store.uid);
+    const link = safeUrl(m.link);
+    return `
+    <li class="bank-item">
+      <button class="star-btn" data-star="${esc(m.id)}" aria-pressed="${!!starred}" aria-label="${starred ? "Unstar" : "Star"} ${esc(m.title)}" title="I'd watch this">${starred ? "★" : "☆"} ${n}</button>
+      <div>
+        <h3>${esc(m.title)} ${m.year ? `<span class="yr">(${esc(m.year)})</span>` : ""} ${onBallot.has(m.id) ? `<span class="badge">on ballot</span>` : ""}</h3>
+        ${m.pitch ? `<p class="pitch">${esc(m.pitch)}</p>` : ""}
+        <div class="meta">
+          <span>${esc(m.submittedBy || "someone")} · ${ago(m.createdAt)}</span>
+          ${m.runtime ? `<span>${esc(m.runtime)} min</span>` : ""}
+          ${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">link ↗</a>` : ""}
+          <button class="linkish" data-watched="${esc(m.id)}">mark watched</button>
+          ${m.submittedByUid === store.uid ? `<button class="linkish" data-remove="${esc(m.id)}">remove</button>` : ""}
+        </div>
+      </div>
+    </li>`;
+  }).join("") : `<li class="empty">${q ? "No films match that search." : "The bank is empty. Suggest the first film!"}</li>`;
 
-  const max = Math.max(1, ...all.map((m) => m.votes?.length || 0));
-  const topVotes = active[0]?.votes?.length || 0;
-  const shown = showAll ? active : active.slice(0, TOP_N);
-  list.innerHTML = active.length
-    ? shown.map((m, i) => movieItem(m, i + 1, max, topVotes)).join("")
-    : `<li class="empty">Everything's gathering dust. Vote for something below, or suggest a new film!</li>`;
-
-  const hidden = active.length - TOP_N;
-  $("#more").innerHTML = hidden > 0
-    ? `<button class="btn ghost block" id="toggle-all">${showAll ? "Show top 10 only" : `Show all ${active.length} films (${hidden} more)`}</button>`
+  const hidden = all.length - BANK_SHOW;
+  $("#more").innerHTML = !q && hidden > 0
+    ? `<button class="btn ghost block" id="toggle-all">${showAll ? `Show top ${BANK_SHOW} only` : `Show all ${all.length} films (${hidden} more)`}</button>`
     : "";
-
-  const d = $("#dusty");
-  d.hidden = !dusty.length;
-  $("#dusty-count").textContent = dusty.length;
-  $("#dusty-list").innerHTML = dusty.map((m) => movieItem(m, null, max, -1)).join("");
-}
-
-function renderSubmit() {
-  if (!store) return;
-  const picks = myPicks();
-  const box = $("#my-pick");
-  const form = $("#movie-form");
-  box.hidden = !picks.length;
-  form.hidden = picks.length > 0;
-  if (!picks.length) { box.innerHTML = ""; return; }
-  const p = picks[0];
-  const canRemove = p.submittedByUid === store.uid;
-  const n = p.votes?.length || 0;
-  box.innerHTML = `
-    <span class="eyebrow">Your pick${picks.length > 1 ? `s (${picks.length})` : ""}</span>
-    <div class="pick-title">${picks.map((m) => esc(m.title)).join(", ")}</div>
-    <span class="muted small">${n} ${n === 1 ? "vote" : "votes"} so far${isDusty(p) ? " · gathering dust" : ""}</span>
-    ${picks.length === 1 && canRemove
-      ? `<button class="btn ghost small" id="swap-pick">Swap for a different film</button>`
-      : `<span class="muted small">${picks.length > 1 ? "Once you're down to none, you can suggest another." : "You added this on another device. Remove it there to swap."}</span>`}`;
 }
 
 function renderHistory() {
   const list = $("#history");
   const items = watched();
   list.innerHTML = items.length
-    ? items.map((m) => `<li><span>${esc(m.title)} ${m.year ? `<span class="muted">(${esc(m.year)})</span>` : ""}</span><span class="muted small">${m.watchedAt ? new Date(m.watchedAt).toLocaleDateString() : ""} · <button class="linkish" data-unwatch="${esc(m.id)}">back to shortlist</button></span></li>`).join("")
+    ? items.map((m) => `<li><span>${esc(m.title)} ${m.year ? `<span class="muted">(${esc(m.year)})</span>` : ""}</span><span class="muted small">${m.watchedAt ? new Date(m.watchedAt).toLocaleDateString() : ""} · <button class="linkish" data-unwatch="${esc(m.id)}">back to bank</button></span></li>`).join("")
     : `<li class="muted">Nothing yet. Your first movie night will show up here.</li>`;
 }
 
 function renderAll() {
   renderNight();
   renderBallot();
-  renderSubmit();
+  renderBank();
   renderHistory();
   fillNightForm();
+  reconcile();
+}
+
+/* ---------- actions ---------- */
+function toggleVote(id, btn) {
+  if (!round || !requireName()) return;
+  if (!votingOpen()) { toast("Voting has closed for this round", true); return; }
+  const picks = myPicks();
+  const on = !picks.includes(id);
+  if (on && picks.length >= VOTES_EACH) { toast(`You've used all ${VOTES_EACH} votes. Take one back first.`, true); return; }
+  btn.disabled = true;
+  store.castBallot(round.id, on ? [...picks, id] : picks.filter((p) => p !== id), getName())
+    .catch(fail).finally(() => { btn.disabled = false; });
+}
+
+function swapOut(id) {
+  const m = byId(id);
+  if (!m || !round) return;
+  const n = tally().count[id] || 0;
+  if (!confirm(`Swap "${m.title}" off this ballot for another film from the bank?${n ? ` Its ${plural(n, "vote")} will be lost.` : ""} It stays in the bank for future rounds.`)) return;
+  const rid = round.id;
+  store.updateRound((cur) => {
+    if (!cur || cur.id !== rid) return null;
+    const skipped = [...(cur.skipped || []), id].slice(-100);
+    const keep = cur.films.filter((f) => f !== id && byId(f)?.status === "pending");
+    return { ...cur, skipped, films: pickBallot(keep, skipped) };
+  }).then(() => toast(`Swapped out "${m.title}"`)).catch(fail);
+}
+
+function finishNight() {
+  const w = leader();
+  if (!w || !confirm(`Mark "${w.title}" as watched and start the next round with a fresh ballot?`)) return;
+  store.finishNight(w.id, newRound(round, [w.id]), getName())
+    .then(() => toast("Enjoy the film! A new round has started."))
+    .catch(fail);
 }
 
 /* ---------- events ---------- */
 function bindEvents() {
-  const ballotClick = (e) => {
+  $("#ballot").addEventListener("click", (e) => {
     const v = e.target.closest("[data-vote]");
-    if (v) {
-      const id = v.dataset.vote;
-      const on = v.getAttribute("aria-pressed") !== "true";
-      v.disabled = true;
-      store.vote(id, on).catch(fail).finally(() => { v.disabled = false; });
+    if (v) return toggleVote(v.dataset.vote, v);
+    const s = e.target.closest("[data-swap]");
+    if (s) swapOut(s.dataset.swap);
+  });
+
+  $("#bank").addEventListener("click", (e) => {
+    const s = e.target.closest("[data-star]");
+    if (s) {
+      s.disabled = true;
+      store.star(s.dataset.star, s.getAttribute("aria-pressed") !== "true").catch(fail).finally(() => { s.disabled = false; });
       return;
     }
     const w = e.target.closest("[data-watched]");
     if (w) {
-      const film = movies.find((m) => m.id === w.dataset.watched);
-      if (film && confirm(`Move "${film.title}" to Already watched?`)) {
+      const film = byId(w.dataset.watched);
+      if (film && confirm(`Move "${film.title}" to Already watched? (For films you've seen outside movie night.)`)) {
         store.setStatus(film.id, "watched").then(() => toast("Moved to Already watched")).catch(fail);
       }
       return;
     }
     const r = e.target.closest("[data-remove]");
-    if (r && confirm("Remove this film from the shortlist?")) {
+    if (r && confirm("Remove this film from the bank?")) {
       store.remove(r.dataset.remove).then(() => toast("Removed")).catch(fail);
     }
-  };
-  $("#ballot").addEventListener("click", ballotClick);
-  $("#dusty-list").addEventListener("click", ballotClick);
+  });
 
+  $("#bank-search").addEventListener("input", (e) => { search = e.target.value; renderBank(); });
   $("#more").addEventListener("click", (e) => {
     if (!e.target.closest("#toggle-all")) return;
     showAll = !showAll;
-    renderBallot();
+    renderBank();
   });
 
-  $("#reset-votes").addEventListener("click", () => {
-    const films = pending();
-    if (!films.length) return;
-    if (!confirm("Start a new voting round? This clears everyone's votes on every film on the shortlist. The films stay; only the votes go.")) return;
-    store.resetVotes(films.map((m) => m.id)).then(() => toast("Votes reset. New round!")).catch(fail);
+  $("#night").addEventListener("click", (e) => {
+    if (e.target.closest("#finish-night")) finishNight();
   });
 
   $("#history").addEventListener("click", (e) => {
@@ -313,13 +436,8 @@ function bindEvents() {
     const f = e.target;
     const title = f.title.value.trim();
     if (!title) return;
-    if (myPicks().length) {
-      toast("You already have a film on the shortlist", true);
-      renderSubmit();
-      return;
-    }
-    if (pending().some((m) => m.title.toLowerCase() === title.toLowerCase())) {
-      toast("That film is already on the shortlist", true);
+    if (bank().some((m) => m.title.toLowerCase() === title.toLowerCase())) {
+      toast("That film is already in the bank", true);
       return;
     }
     const btn = f.querySelector("button");
@@ -334,44 +452,35 @@ function bindEvents() {
         submittedBy: getName(),
       });
       f.reset();
-      toast(`Added "${title}"`);
+      toast(`Added "${title}" to the bank`);
     } catch (err) { fail(err); }
     finally { btn.disabled = false; }
   });
 
-  $("#my-pick").addEventListener("click", (e) => {
-    if (!e.target.closest("#swap-pick")) return;
-    const p = myPicks()[0];
-    if (!p || !confirm(`Take "${p.title}" off the shortlist so you can suggest something else? Its votes will be lost.`)) return;
-    store.remove(p.id).then(() => toast("Removed. Suggest your new film below.")).catch(fail);
-  });
-
-    $("#night-form").addEventListener("submit", async (e) => {
+  $("#night-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!requireName()) return;
     const f = e.target;
     const d = new Date(f.datetime.value);
     if (isNaN(d)) { toast("Pick a date and time", true); return; }
-    const film = movies.find((m) => m.id === f.movieId.value);
+    // Close 24h before; if the night is sooner than that, voting stays open until it starts.
+    const close = d.getTime() - CLOSE_BEFORE > Date.now() ? d.getTime() - CLOSE_BEFORE : d.getTime();
     try {
       await store.saveNight({
         datetime: d.toISOString(),
         location: f.location.value.trim(),
         notes: f.notes.value.trim(),
-        movieId: film ? film.id : "",
-        movieTitle: film ? film.title : "",
+        closesAt: close,
         updatedBy: getName(),
       });
       $("#night-edit").open = false;
-      toast("Movie night saved");
+      toast(`Movie night saved. Voting closes ${fmtWhen(close)}.`);
     } catch (err) { fail(err); }
   });
 
-  $("#pick-top").addEventListener("click", () => {
-    const top = pending()[0];
-    if (!top) { toast("No films on the shortlist yet", true); return; }
-    $("#night-form").movieId.value = top.id;
-    toast(`Selected "${top.title}". Remember to save.`);
+  $("#cancel-night").addEventListener("click", () => {
+    if (!confirm("Cancel this movie night? Votes are kept and voting stays open until a new night is set.")) return;
+    store.cancelNight(getName()).then(() => { $("#night-edit").open = false; toast("Movie night cancelled"); }).catch(fail);
   });
 }
 
@@ -398,12 +507,24 @@ async function main() {
   else showGate();
 }
 
+function subscribeBallots() {
+  const rid = round?.id || null;
+  if (rid === ballotsRoundId) return;
+  ballotsUnsub?.();
+  ballots = [];
+  ballotsRoundId = rid;
+  ballotsUnsub = rid ? store.onBallots(rid, (b) => { ballots = b; renderAll(); }, fail) : null;
+}
+
 function start() {
   $("#gate").hidden = true;
   $("#club").hidden = false;
   $("#whoami").hidden = false;
-  store.onMovies((m) => { movies = m; renderAll(); }, fail);
+  store.onMovies((m) => { movies = m; loaded.movies = true; renderAll(); }, fail);
   store.onNight((n) => { night = n; renderAll(); }, fail);
+  store.onRound((r) => { round = r; loaded.round = true; subscribeBallots(); renderAll(); }, fail);
+  // Keep countdowns fresh and flip to "voting closed" on time.
+  setInterval(renderAll, 30e3);
 }
 
 function showGate() {

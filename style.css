@@ -77,10 +77,6 @@ h2 { font-size: 1.9rem; }
 /* Banner */
 .banner { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--rose); border-radius: var(--radius); color: var(--rose); background: rgba(30,40,80,.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font-size: .9rem; }
 
-/* Your pick (one film each) */
-.my-pick { padding: 14px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); display: grid; gap: 8px; }
-.my-pick .pick-title { font-family: "Bebas Neue", sans-serif; font-size: 1.7rem; line-height: 1.1; }
-
 /* Passcode gate */
 .gate { max-width: 440px; margin: 48px auto; }
 .gate h2 { margin-bottom: 6px; }
@@ -113,8 +109,6 @@ h2 { font-size: 1.9rem; }
 .night-edit { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
 .night-edit summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
 .night-edit[open] summary { margin-bottom: 12px; }
-.new-round { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
-.new-round p { margin: 0 0 8px; }
 
 /* Layout */
 .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
@@ -153,6 +147,14 @@ textarea { resize: vertical; }
 .linkish:hover { color: var(--rose); }
 
 /* Ballot */
+.ballot { margin-bottom: 20px; }
+.head-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.pill { font-size: .75rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--glow); color: var(--accent-ink); }
+.pill:empty { display: none; }
+.pill.closed { background: var(--line); color: var(--muted); }
+.voters { margin-top: 4px; font-size: .78rem; color: var(--rose); }
+.vote-btn:disabled { cursor: default; opacity: .7; box-shadow: none; }
+.vote-btn:disabled:hover { border-color: var(--line); }
 .ballot-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .movie { display: grid; grid-template-columns: 56px 1fr auto; gap: 14px; align-items: center; padding: 12px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); }
 .movie.leader { border-color: var(--pink); box-shadow: 0 0 22px rgba(255,126,179,.2); }
@@ -173,13 +175,21 @@ textarea { resize: vertical; }
 .vote-label { font-size: .7rem; color: var(--muted); }
 .more { margin-top: 10px; }
 .more:empty { display: none; }
-.dusty { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
-.dusty summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
-.dusty[open] summary { margin-bottom: 10px; }
-.dusty .movie { opacity: .75; grid-template-columns: 1fr auto; }
-.dusty .rank { display: none; }
 .empty { padding: 24px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; }
 @media (max-width: 480px) { .movie { grid-template-columns: 1fr auto; } .rank { display: none; } }
+
+/* Film bank */
+#bank-search { margin-bottom: 10px; }
+.bank-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.bank-item { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: start; padding: 10px 12px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); }
+.bank-item h3 { font-family: Inter, sans-serif; font-size: 1rem; font-weight: 600; letter-spacing: 0; }
+.bank-item h3 .yr { color: var(--muted); font-weight: 400; }
+.bank-item .pitch { margin: 3px 0 0; font-size: .88rem; }
+.bank-item .meta { margin-top: 4px; font-size: .78rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.star-btn { font: 600 .95rem Inter, sans-serif; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 6px 0; cursor: pointer; transition: border-color .2s, box-shadow .2s; }
+.star-btn:hover { border-color: var(--coral); box-shadow: 0 0 12px rgba(255,138,118,.35); }
+.star-btn[aria-pressed="true"] { color: #ffd27a; border-color: #ffd27a; }
+.badge { display: inline-block; vertical-align: middle; font-size: .65rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: var(--glow); color: var(--accent-ink); }
 
 /* History */
 .history-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }

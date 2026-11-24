@@ -100,11 +100,11 @@
     <div id="club" hidden>
 
     <!-- Next movie night -->
-    <section class="marquee" aria-labelledby="night-heading">
+    <section class="marquee" aria-label="Next movie night">
       <p class="eyebrow">Next movie night</p>
       <div id="night"><p class="muted">Loading…</p></div>
       <details class="night-edit" id="night-edit">
-        <summary>Set or change movie night · new voting round</summary>
+        <summary>Set or change movie night</summary>
         <form id="night-form" class="form">
           <div class="row2">
             <label>Date &amp; time
@@ -114,44 +114,45 @@
               <input type="text" name="location" maxlength="120" placeholder="Sam's place">
             </label>
           </div>
-          <label>Film
-            <select name="movieId"></select>
-          </label>
           <label>Notes
             <input type="text" name="notes" maxlength="200" placeholder="Bring snacks · starts at 8 sharp">
           </label>
+          <p class="muted small" style="margin:0">Voting closes 24 hours before the night (or when it starts, if that's sooner). The top film wins.</p>
           <div class="actions">
             <button type="submit" class="btn primary">Save movie night</button>
-            <button type="button" class="btn ghost" id="pick-top">Pick top-voted film</button>
+            <button type="button" class="btn ghost" id="cancel-night" hidden>Cancel this night</button>
           </div>
         </form>
-        <div class="new-round">
-          <p class="muted small">After a movie night, you can clear everyone's votes so the next pick starts fresh. The films stay on the shortlist.</p>
-          <button type="button" class="btn small ghost" id="reset-votes">↺ Reset all votes</button>
-        </div>
       </details>
     </section>
 
-    <main class="grid">
-      <!-- Ballot -->
-      <section class="card ballot" aria-labelledby="ballot-heading">
-        <div class="card-head">
-          <h2 id="ballot-heading">The shortlist</h2>
-          <p class="muted small">Vote for as many as you like. Click again to take your vote back.</p>
+    <!-- This round's ballot -->
+    <section class="card ballot" aria-labelledby="ballot-heading">
+      <div class="card-head">
+        <div class="head-row">
+          <h2 id="ballot-heading">This round's ballot</h2>
+          <span id="round-status" class="pill"></span>
         </div>
-        <ol id="ballot" class="ballot-list"></ol>
+        <p class="muted small" id="ballot-help"></p>
+      </div>
+      <ol id="ballot" class="ballot-list"></ol>
+    </section>
+
+    <main class="grid">
+      <!-- Film bank -->
+      <section class="card bank" aria-labelledby="bank-heading">
+        <div class="card-head">
+          <h2 id="bank-heading">Film bank</h2>
+          <p class="muted small">Every film the club has suggested. Star the ones you'd happily watch: the most-starred films, plus the ones that have waited longest, make the next ballot.</p>
+        </div>
+        <input type="search" id="bank-search" placeholder="Search the bank…" aria-label="Search the film bank">
+        <ul id="bank" class="bank-list"></ul>
         <div id="more" class="more"></div>
-        <details id="dusty" class="dusty" hidden>
-          <summary>Gathering dust (<span id="dusty-count">0</span>) <span class="muted small">· no votes in 2+ months. Vote for one to bring it back.</span></summary>
-          <ul id="dusty-list" class="ballot-list"></ul>
-        </details>
       </section>
 
       <!-- Submit -->
       <aside class="card submit" aria-labelledby="submit-heading">
         <h2 id="submit-heading">Suggest a film</h2>
-        <p class="muted small">One film each on the shortlist. Once yours is watched or removed, you can suggest another.</p>
-        <div id="my-pick" class="my-pick" hidden></div>
         <form id="movie-form" class="form">
           <label>Title
             <input type="text" name="title" required maxlength="150" placeholder="e.g. Paddington 2">
@@ -170,7 +171,7 @@
           <label>Why we should watch it
             <textarea name="pitch" rows="3" maxlength="300" placeholder="Optional pitch"></textarea>
           </label>
-          <button type="submit" class="btn primary block">Add to shortlist</button>
+          <button type="submit" class="btn primary block">Add to the bank</button>
         </form>
       </aside>
     </main>
