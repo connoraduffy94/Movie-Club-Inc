@@ -1,7 +1,7 @@
 # 🎬 Movie Club
 
 A small website for our movie club:
-- **Suggest films** for the shortlist
+- **Suggest films** for the shortlist: one each at a time (swap it any time; suggest another once it's watched)
 - **Vote** on the shortlist (one vote per film per person; click again to take it back)
 - **See the next movie night**: date, place, film, a countdown and an "Add to Google Calendar" link
 - **Mark films as watched**, which keeps a history
@@ -79,6 +79,7 @@ Share the link with the club. Updates appear for everyone instantly, with no ref
 ## Good to know
 - **Passcode.** Share it only with the club. To **change it**, edit `config/club` in the Firebase console. That stops new people joining with the old code, but anyone who already joined stays in.
 - **Removing someone:** in **Firestore Database → Data → members**, find their document (it shows their name) and delete it. They'll need the current passcode to get back in.
+- **One film each** is checked by the site, not the database rules. A film counts as yours if it was added from your browser or under your name. A determined member could get round it (e.g. a different name on another device), which is fine among friends.
 - **Voting is trust-based.** A member could vote again from a different browser or a private window. That's fine for a group of friends.
 - **Reset votes** clears everyone's votes on the whole shortlist (it asks first). The films stay. Agree as a club when to use it, e.g. after each movie night.
 - To change "top 10" or the 2-month cut-off, edit `TOP_N` and `DUSTY_AFTER` at the top of `app.js`.

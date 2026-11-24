@@ -34,6 +34,13 @@ function fail(err) {
 
 const pending = () => movies.filter((m) => m.status !== "watched")
   .sort((a, b) => (b.votes?.length || 0) - (a.votes?.length || 0) || a.createdAt - b.createdAt);
+// Films on the shortlist that belong to me: added from this browser, or under my name (e.g. from my other device).
+const myPicks = () => {
+  const name = getName().trim().toLowerCase();
+  return pending().filter((m) => m.submittedByUid === store?.uid
+    || (name && (m.submittedBy || "").trim().toLowerCase() === name));
+};
+
 // A film is dusty if nobody has voted for it and it was added (or votes were last reset) over 2 months ago.
 const isDusty = (m) => !(m.votes?.length) && Date.now() - Math.max(m.createdAt || 0, m.roundStartedAt || 0) > DUSTY_AFTER;
 
@@ -57,13 +64,13 @@ function renderWhoami() {
   const name = getName();
   if (name) {
     el.innerHTML = `<span class="muted">Hi,</span> <strong>${esc(name)}</strong> <button class="linkish" id="change-name">change</button>`;
-    $("#change-name").onclick = () => { setName(""); renderWhoami(); };
+    $("#change-name").onclick = () => { setName(""); renderWhoami(); renderSubmit(); };
   } else {
     el.innerHTML = `<form id="name-form" class="whoami"><input name="n" maxlength="40" placeholder="Your name" required aria-label="Your name"><button class="btn small primary">Save</button></form>`;
     $("#name-form").onsubmit = (e) => {
       e.preventDefault();
       const n = e.target.n.value.trim();
-      if (n) { setName(n); renderWhoami(); toast(`Welcome, ${n}!`); }
+      if (n) { setName(n); renderWhoami(); renderSubmit(); toast(`Welcome, ${n}!`); }
     };
   }
 }
@@ -219,6 +226,26 @@ function renderBallot() {
   $("#dusty-list").innerHTML = dusty.map((m) => movieItem(m, null, max, -1)).join("");
 }
 
+function renderSubmit() {
+  if (!store) return;
+  const picks = myPicks();
+  const box = $("#my-pick");
+  const form = $("#movie-form");
+  box.hidden = !picks.length;
+  form.hidden = picks.length > 0;
+  if (!picks.length) { box.innerHTML = ""; return; }
+  const p = picks[0];
+  const canRemove = p.submittedByUid === store.uid;
+  const n = p.votes?.length || 0;
+  box.innerHTML = `
+    <span class="eyebrow">Your pick${picks.length > 1 ? `s (${picks.length})` : ""}</span>
+    <div class="pick-title">${picks.map((m) => esc(m.title)).join(", ")}</div>
+    <span class="muted small">${n} ${n === 1 ? "vote" : "votes"} so far${isDusty(p) ? " · gathering dust" : ""}</span>
+    ${picks.length === 1 && canRemove
+      ? `<button class="btn ghost small" id="swap-pick">Swap for a different film</button>`
+      : `<span class="muted small">${picks.length > 1 ? "Once you're down to none, you can suggest another." : "You added this on another device. Remove it there to swap."}</span>`}`;
+}
+
 function renderHistory() {
   const list = $("#history");
   const items = watched();
@@ -230,6 +257,7 @@ function renderHistory() {
 function renderAll() {
   renderNight();
   renderBallot();
+  renderSubmit();
   renderHistory();
   fillNightForm();
 }
@@ -285,6 +313,11 @@ function bindEvents() {
     const f = e.target;
     const title = f.title.value.trim();
     if (!title) return;
+    if (myPicks().length) {
+      toast("You already have a film on the shortlist", true);
+      renderSubmit();
+      return;
+    }
     if (pending().some((m) => m.title.toLowerCase() === title.toLowerCase())) {
       toast("That film is already on the shortlist", true);
       return;
@@ -306,7 +339,14 @@ function bindEvents() {
     finally { btn.disabled = false; }
   });
 
-  $("#night-form").addEventListener("submit", async (e) => {
+  $("#my-pick").addEventListener("click", (e) => {
+    if (!e.target.closest("#swap-pick")) return;
+    const p = myPicks()[0];
+    if (!p || !confirm(`Take "${p.title}" off the shortlist so you can suggest something else? Its votes will be lost.`)) return;
+    store.remove(p.id).then(() => toast("Removed. Suggest your new film below.")).catch(fail);
+  });
+
+    $("#night-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!requireName()) return;
     const f = e.target;
