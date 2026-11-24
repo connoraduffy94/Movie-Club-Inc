@@ -389,12 +389,11 @@ function renderHistory() {
     : `<li class="muted">Nothing yet. Your first movie night will show up here.</li>`;
 }
 
+// Each part renders on its own, so a problem in one section can't blank the others.
 function renderAll() {
-  renderNight();
-  renderBallot();
-  renderBank();
-  renderHistory();
-  fillNightForm();
+  for (const fn of [renderNight, renderBallot, renderBank, renderHistory, fillNightForm]) {
+    try { fn(); } catch (err) { console.error(`${fn.name} failed:`, err); }
+  }
   reconcile();
 }
 

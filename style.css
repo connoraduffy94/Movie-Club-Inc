@@ -145,8 +145,11 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--pink); outline-offset: 1px; border-color: transparent; }
 input::placeholder, textarea::placeholder { color: rgba(226,228,244,.55); }
-input[type="datetime-local"], select { color-scheme: dark; }
-select option { background: #34477f; }
+input[type="datetime-local"] { color-scheme: dark; }
+/* The open dropdown list is drawn by the browser/OS, often on a white background.
+   Give options explicit dark-on-light colours so they're readable everywhere. */
+select { cursor: pointer; }
+select option { background: #ffffff; color: #2a1230; }
 textarea { resize: vertical; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
