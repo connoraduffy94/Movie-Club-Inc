@@ -101,12 +101,12 @@ async function createFirebaseStore() {
     castBallot(roundId, picks, name) {
       return fs.setDoc(fs.doc(db, "rounds", roundId, "ballots", uid), { picks, name, updatedAt: Date.now() });
     },
-    // After movie night: the winner goes to history, the night is cleared and the next round starts.
+    // After movie night: the film goes to history, the night is cleared and (for a voted night) the next round starts.
     finishNight(winnerId, nextRound, updatedBy) {
       const batch = fs.writeBatch(db);
       batch.update(movieRef(winnerId), { status: "watched", watchedAt: Date.now() });
       batch.set(nightRef, { ...CLEARED_NIGHT, updatedBy, updatedAt: Date.now() });
-      batch.set(roundRef, nextRound);
+      if (nextRound) batch.set(roundRef, nextRound);   // null for a chosen-film night: the round carries on
       return batch.commit();
     },
   };
@@ -201,7 +201,7 @@ function createDemoStore() {
       const m = find(winnerId);
       if (m) { m.status = "watched"; m.watchedAt = Date.now(); }
       state.night = { ...CLEARED_NIGHT, updatedBy, updatedAt: Date.now() };
-      state.round = nextRound;
+      if (nextRound) state.round = nextRound;
       emit();
     },
   };

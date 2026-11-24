@@ -9,7 +9,9 @@ A small website for our movie club. Live at https://connoraduffy94.github.io/Mov
 4. **Winner.** The film with the most votes wins. Ties go to the film that has waited longest in the bank.
 5. **After the night**, press **"We watched it ✓ · start next round"**. The winner moves to *Already watched*, the night is cleared, and a fresh ballot is drawn automatically.
 
-Also: a countdown and "Add to Google Calendar" link for the next night, a **Cancel this night** button (votes are kept), search in the bank, and a history of watched films.
+**Watching a particular film:** when setting the night, pick a film under *Film* instead of "Decided by vote". That night shows the chosen film, voting isn't closed, and the ballot and votes carry over to the next night. "We watched it ✓" then moves that film to history without starting a new round.
+
+Also: a "How it works" help section, a countdown and "Add to Google Calendar" link for the next night, a **Cancel this night** button (votes are kept), search in the bank, and a history of watched films.
 
 It's a plain static site (HTML/CSS/JS, no build step) hosted free on **GitHub Pages**. The shared data (films, votes, next night) lives in a free **Firebase Firestore** database.
 
@@ -69,7 +71,7 @@ Share the link with the club. Updates appear for everyone instantly, with no ref
 
 **Data in Firestore**
 - `movies/{id}`: the film bank. `title, year, runtime, link, pitch, submittedBy, submittedByUid, votes[] (uids who starred it), status ('pending'|'watched'), createdAt, watchedAt`
-- `meta/nextNight`: `datetime (ISO, "" if none), location, notes, closesAt (ms), updatedBy, updatedAt`
+- `meta/nextNight`: `datetime (ISO, "" if none), location, notes, closesAt (ms, null for a chosen-film night), movieId/movieTitle (chosen film, "" if decided by vote), updatedBy, updatedAt`
 - `meta/round`: the current ballot. `id, number, films[], skipped[], startedAt`
 - `rounds/{roundId}/ballots/{uid}`: one member's votes for a round. `picks[] (max 3), name, updatedAt`
 - `members/{uid}`: `name, code, joinedAt`: one per browser that has entered the passcode

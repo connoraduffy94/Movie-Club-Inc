@@ -64,6 +64,9 @@ const watched = () => movies.filter((m) => m.status === "watched")
   .sort((a, b) => (b.watchedAt || 0) - (a.watchedAt || 0));
 
 const nightSet = () => Boolean(night?.datetime);
+// A night where someone chose a specific film instead of voting. Voting carries on to the next night.
+const chosenNight = () => nightSet() && Boolean(night.movieId);
+const chosenFilm = () => (chosenNight() ? byId(night.movieId) || { id: night.movieId, title: night.movieTitle || "Chosen film", gone: true } : null);
 const closesAt = () => (nightSet() && night.closesAt ? night.closesAt : null);
 const votingOpen = () => !closesAt() || Date.now() < closesAt();
 
@@ -209,6 +212,8 @@ function renderNight() {
     return;
   }
 
+  if (chosenNight()) return renderChosenNight(el, leadLine);
+
   const open = votingOpen();
   const when = new Date(night.datetime);
   const title = open ? "Film decided by vote" : top ? top.title : "No film chosen";
@@ -234,10 +239,40 @@ function renderNight() {
     </div>`;
 }
 
+function renderChosenNight(el, leadLine) {
+  const film = chosenFilm();
+  const when = new Date(night.datetime);
+  const cal = gcalLink(night, film.title);
+  const cd = countdown(when);
+  const canFinish = !film.gone && film.status !== "watched";
+  el.innerHTML = `
+    <div class="night-title">${esc(film.title)}${film.year ? ` <span class="muted">(${esc(film.year)})</span>` : ""}</div>
+    <div class="night-meta">
+      <span>📅 ${esc(when.toLocaleString(undefined, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }))}</span>
+      ${night.location ? `<span>📍 ${esc(night.location)}</span>` : ""}
+      ${film.runtime ? `<span>⏱ ${esc(film.runtime)} min</span>` : ""}
+      <span>🎟 Chosen film${night.updatedBy ? ` · picked by ${esc(night.updatedBy)}` : ""}</span>
+    </div>
+    ${night.notes ? `<p class="muted" style="margin:8px 0 0">${esc(night.notes)}</p>` : ""}
+    <p style="margin:8px 0 0">🗳 <span class="muted small">The vote carries on to the next night.</span><br>${leadLine}</p>
+    <span class="countdown${cd.past ? " past" : ""}">${esc(cd.text)}</span>
+    <div class="night-actions">
+      ${cal ? `<a class="btn small" href="${esc(cal)}" target="_blank" rel="noopener">Add to Google Calendar</a>` : ""}
+      ${safeUrl(film.link) ? `<a class="btn small" href="${esc(film.link)}" target="_blank" rel="noopener">Film link</a>` : ""}
+      ${canFinish ? `<button class="btn small primary" id="finish-night">We watched it ✓</button>` : ""}
+    </div>`;
+}
+
 function fillNightForm() {
   const form = $("#night-form");
   $("#cancel-night").hidden = !nightSet();
   if (document.activeElement?.form === form) return;   // don't overwrite while someone is typing
+  const films = bank().slice().sort((a, b) => a.title.localeCompare(b.title));
+  const current = chosenNight() ? night.movieId : "";
+  form.movieId.innerHTML = `<option value="">🗳 Decided by vote</option>` +
+    films.map((m) => `<option value="${esc(m.id)}">${esc(m.title)}${m.year ? ` (${esc(m.year)})` : ""}</option>`).join("");
+  form.movieId.value = films.some((m) => m.id === current) ? current : "";
+  updateNightFormHelp();
   if (nightSet()) {
     const d = new Date(night.datetime);
     if (!isNaN(d)) form.datetime.value = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
@@ -246,6 +281,13 @@ function fillNightForm() {
   }
   form.location.value = night?.location || "";
   form.notes.value = night?.notes || "";
+}
+
+function updateNightFormHelp() {
+  const hours = CLOSE_BEFORE / 36e5;
+  $("#night-form-help").textContent = $("#night-form").movieId.value
+    ? "This night will show the chosen film. Voting isn't affected: the ballot and votes carry over to the next night."
+    : `Voting closes ${hours} hours before the night (or when it starts, if that's sooner). The top film wins. To watch a particular film instead, pick it above (add it to the bank first).`;
 }
 
 /* ---------- ballot ---------- */
@@ -377,6 +419,12 @@ function swapOut(id) {
 }
 
 function finishNight() {
+  if (chosenNight()) {
+    const f = chosenFilm();
+    if (!f || f.gone || !confirm(`Mark "${f.title}" as watched? The current vote carries on to the next night.`)) return;
+    store.finishNight(f.id, null, getName()).then(() => toast("Enjoy the film! The vote carries on.")).catch(fail);
+    return;
+  }
   const w = leader();
   if (!w || !confirm(`Mark "${w.title}" as watched and start the next round with a fresh ballot?`)) return;
   store.finishNight(w.id, newRound(round, [w.id]), getName())
@@ -464,19 +512,25 @@ function bindEvents() {
     const d = new Date(f.datetime.value);
     if (isNaN(d)) { toast("Pick a date and time", true); return; }
     // Close 24h before; if the night is sooner than that, voting stays open until it starts.
-    const close = d.getTime() - CLOSE_BEFORE > Date.now() ? d.getTime() - CLOSE_BEFORE : d.getTime();
+    // A chosen film doesn't close voting: the round carries on to the next night.
+    const film = byId(f.movieId.value);
+    const close = film ? null : d.getTime() - CLOSE_BEFORE > Date.now() ? d.getTime() - CLOSE_BEFORE : d.getTime();
     try {
       await store.saveNight({
         datetime: d.toISOString(),
         location: f.location.value.trim(),
         notes: f.notes.value.trim(),
         closesAt: close,
+        movieId: film ? film.id : "",
+        movieTitle: film ? film.title : "",
         updatedBy: getName(),
       });
       $("#night-edit").open = false;
-      toast(`Movie night saved. Voting closes ${fmtWhen(close)}.`);
+      toast(film ? `Movie night saved: ${film.title}` : `Movie night saved. Voting closes ${fmtWhen(close)}.`);
     } catch (err) { fail(err); }
   });
+
+  $("#night-form").movieId.addEventListener("change", updateNightFormHelp);
 
   $("#cancel-night").addEventListener("click", () => {
     if (!confirm("Cancel this movie night? Votes are kept and voting stays open until a new night is set.")) return;

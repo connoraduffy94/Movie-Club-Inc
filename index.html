@@ -134,6 +134,7 @@
           <li><strong>Everyone's already seen a ballot film?</strong> Use <em>swap out</em> to replace it with another from the bank. It stays in the bank.</li>
           <li><strong>Seen a bank film outside the club?</strong> Use <em>mark watched</em> on it.</li>
           <li><strong>Night called off?</strong> Use <em>Cancel this night</em> in the movie night panel. Votes are kept, and voting stays open until a new night is set.</li>
+          <li><strong>Want to watch a particular film?</strong> When setting up the night, choose it under <em>Film</em> instead of "Decided by vote". It needs to be in the bank first. The ballot and everyone's votes carry over to the next night.</li>
           <li><strong>No night set yet?</strong> Voting stays open and the top of the page shows which film is leading.</li>
           <li><strong>Your name</strong> appears on your suggestions and votes. You can change it at the top right.</li>
           <li><strong>New phone or cleared your browser?</strong> You'll need the club passcode again. Your votes stay with the old device for the current round.</li>
@@ -157,10 +158,13 @@
               <input type="text" name="location" maxlength="120" placeholder="Sam's place">
             </label>
           </div>
+          <label>Film
+            <select name="movieId"></select>
+          </label>
           <label>Notes
             <input type="text" name="notes" maxlength="200" placeholder="Bring snacks · starts at 8 sharp">
           </label>
-          <p class="muted small" style="margin:0">Voting closes 24 hours before the night (or when it starts, if that's sooner). The top film wins.</p>
+          <p class="muted small" style="margin:0" id="night-form-help"></p>
           <div class="actions">
             <button type="submit" class="btn primary">Save movie night</button>
             <button type="button" class="btn ghost" id="cancel-night" hidden>Cancel this night</button>
