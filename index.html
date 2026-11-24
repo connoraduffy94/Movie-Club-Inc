@@ -104,7 +104,7 @@
       <p class="eyebrow">Next movie night</p>
       <div id="night"><p class="muted">Loading…</p></div>
       <details class="night-edit" id="night-edit">
-        <summary>Set or change movie night</summary>
+        <summary>Set or change movie night · new voting round</summary>
         <form id="night-form" class="form">
           <div class="row2">
             <label>Date &amp; time
@@ -125,6 +125,10 @@
             <button type="button" class="btn ghost" id="pick-top">Pick top-voted film</button>
           </div>
         </form>
+        <div class="new-round">
+          <p class="muted small">After a movie night, you can clear everyone's votes so the next pick starts fresh. The films stay on the shortlist.</p>
+          <button type="button" class="btn small ghost" id="reset-votes">↺ Reset all votes</button>
+        </div>
       </details>
     </section>
 
@@ -132,10 +136,7 @@
       <!-- Ballot -->
       <section class="card ballot" aria-labelledby="ballot-heading">
         <div class="card-head">
-          <div class="card-head-row">
-            <h2 id="ballot-heading">The shortlist</h2>
-            <button type="button" class="btn small ghost" id="reset-votes" hidden title="Clear everyone's votes and start a new round">↺ Reset votes</button>
-          </div>
+          <h2 id="ballot-heading">The shortlist</h2>
           <p class="muted small">Vote for as many as you like. Click again to take your vote back.</p>
         </div>
         <ol id="ballot" class="ballot-list"></ol>

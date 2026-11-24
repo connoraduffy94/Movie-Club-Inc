@@ -113,6 +113,8 @@ h2 { font-size: 1.9rem; }
 .night-edit { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
 .night-edit summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
 .night-edit[open] summary { margin-bottom: 12px; }
+.new-round { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.new-round p { margin: 0 0 8px; }
 
 /* Layout */
 .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
@@ -169,7 +171,6 @@ textarea { resize: vertical; }
 .vote-btn[aria-pressed="true"] { background: var(--glow); border-color: transparent; color: var(--accent-ink); }
 .vote-btn small { display: block; font-size: .6rem; font-weight: 500; }
 .vote-label { font-size: .7rem; color: var(--muted); }
-.card-head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .more { margin-top: 10px; }
 .more:empty { display: none; }
 .dusty { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }

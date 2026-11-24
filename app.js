@@ -199,7 +199,7 @@ function renderBallot() {
   const active = all.filter((m) => !isDusty(m));
   const dusty = all.filter(isDusty);
   const totalVotes = all.reduce((t, m) => t + (m.votes?.length || 0), 0);
-  $("#reset-votes").hidden = totalVotes === 0;
+  $("#reset-votes").disabled = totalVotes === 0;
 
   if (!all.length) {
     list.innerHTML = `<li class="empty">No films on the shortlist yet. Suggest one!</li>`;
