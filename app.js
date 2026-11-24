@@ -263,16 +263,21 @@ function renderChosenNight(el, leadLine) {
     </div>`;
 }
 
-function fillNightForm() {
+// The form is filled from the saved night when the panel is opened (or `force`d).
+// While it's open, refreshes only update the film list and never overwrite what you've chosen or typed.
+function fillNightForm(force = false) {
   const form = $("#night-form");
+  const editing = $("#night-edit").open && !force;
   $("#cancel-night").hidden = !nightSet();
-  if (document.activeElement?.form === form) return;   // don't overwrite while someone is typing
+
   const films = bank().slice().sort((a, b) => a.title.localeCompare(b.title));
-  const current = chosenNight() ? night.movieId : "";
+  const want = editing ? form.movieId.value : (chosenNight() ? night.movieId : "");
   form.movieId.innerHTML = `<option value="">🗳 Decided by vote</option>` +
     films.map((m) => `<option value="${esc(m.id)}">${esc(m.title)}${m.year ? ` (${esc(m.year)})` : ""}</option>`).join("");
-  form.movieId.value = films.some((m) => m.id === current) ? current : "";
+  form.movieId.value = films.some((m) => m.id === want) ? want : "";
   updateNightFormHelp();
+  if (editing) return;
+
   if (nightSet()) {
     const d = new Date(night.datetime);
     if (!isNaN(d)) form.datetime.value = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
@@ -282,12 +287,13 @@ function fillNightForm() {
   form.location.value = night?.location || "";
   form.notes.value = night?.notes || "";
 }
-
 function updateNightFormHelp() {
   const hours = CLOSE_BEFORE / 36e5;
   $("#night-form-help").textContent = $("#night-form").movieId.value
     ? "This night will show the chosen film. Voting isn't affected: the ballot and votes carry over to the next night."
     : `Voting closes ${hours} hours before the night (or when it starts, if that's sooner). The top film wins. To watch a particular film instead, pick it above (add it to the bank first).`;
+  const chosen = byId($("#night-form").movieId.value);
+  $("#save-night").textContent = chosen ? `Save movie night · ${chosen.title}` : "Save movie night";
 }
 
 /* ---------- ballot ---------- */
@@ -531,6 +537,8 @@ function bindEvents() {
   });
 
   $("#night-form").movieId.addEventListener("change", updateNightFormHelp);
+  // Opening the panel loads the saved night into the form.
+  $("#night-edit").addEventListener("toggle", () => { if ($("#night-edit").open) fillNightForm(true); });
 
   $("#cancel-night").addEventListener("click", () => {
     if (!confirm("Cancel this movie night? Votes are kept and voting stays open until a new night is set.")) return;
