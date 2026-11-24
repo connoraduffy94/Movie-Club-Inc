@@ -516,10 +516,32 @@ function subscribeBallots() {
   ballotsUnsub = rid ? store.onBallots(rid, (b) => { ballots = b; renderAll(); }, fail) : null;
 }
 
+const HELP_SEEN_KEY = "movieclub-help-seen";
+function setupHelp() {
+  // Keep the numbers in the help text in sync with the settings above.
+  const hours = CLOSE_BEFORE / 36e5;
+  const values = { ballot: BALLOT_SIZE, stars: BY_STARS, votes: VOTES_EACH, close: `${hours} ${hours === 1 ? "hour" : "hours"}` };
+  document.querySelectorAll("[data-setting]").forEach((el) => { el.textContent = values[el.dataset.setting]; });
+
+  const help = $("#help");
+  // Open automatically on someone's first visit.
+  let seen = false;
+  try { seen = localStorage.getItem(HELP_SEEN_KEY) === "1"; localStorage.setItem(HELP_SEEN_KEY, "1"); } catch { /* ignore */ }
+  help.open = !seen;
+
+  const link = $("#help-link");
+  link.hidden = false;
+  link.onclick = () => {
+    help.open = true;
+    help.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+}
+
 function start() {
   $("#gate").hidden = true;
   $("#club").hidden = false;
   $("#whoami").hidden = false;
+  setupHelp();
   store.onMovies((m) => { movies = m; loaded.movies = true; renderAll(); }, fail);
   store.onNight((n) => { night = n; renderAll(); }, fail);
   store.onRound((r) => { round = r; loaded.round = true; subscribeBallots(); renderAll(); }, fail);

@@ -71,6 +71,8 @@ h2 { font-size: 1.9rem; }
 .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; padding-bottom: 12px; }
 .logo { font-size: 2rem; }
 .logo-text { background: var(--glow); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.header-right { display: flex; align-items: center; gap: 14px; }
+.help-link { font-size: .85rem; color: var(--rose); }
 .whoami { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
 .whoami input { width: 140px; }
 
@@ -80,6 +82,20 @@ h2 { font-size: 1.9rem; }
 /* Passcode gate */
 .gate { max-width: 440px; margin: 48px auto; }
 .gate h2 { margin-bottom: 6px; }
+
+/* Help */
+.help { margin-top: 20px; scroll-margin-top: 80px; }
+.help summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.help summary::-webkit-details-marker { display: none; }
+.help summary h2::before { content: "▸ "; color: var(--rose); }
+.help[open] summary h2::before { content: "▾ "; }
+.help-body { margin-top: 12px; }
+.help-body h3 { font-size: 1.3rem; margin: 18px 0 6px; }
+.help-steps, .help-faq { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.help-steps li::marker { color: var(--coral); font-weight: 600; }
+.help-steps strong { display: block; color: var(--rose); }
+.help em { font-style: normal; font-weight: 600; color: var(--text); background: var(--bg-2); padding: 0 5px; border-radius: 5px; }
+.help b { color: var(--coral); }
 
 /* Marquee / next night: glass card with a flowing alpenglow border */
 .marquee {

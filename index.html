@@ -75,7 +75,10 @@
   <header class="site-header">
     <div class="wrap header-row">
       <h1 class="logo"><span aria-hidden="true">🎬</span> <span class="logo-text">Movie Club</span></h1>
-      <div class="whoami" id="whoami"></div>
+      <div class="header-right">
+        <button type="button" class="linkish help-link" id="help-link" hidden>How it works</button>
+        <div class="whoami" id="whoami"></div>
+      </div>
     </div>
   </header>
 
@@ -98,6 +101,46 @@
     </section>
 
     <div id="club" hidden>
+
+    <!-- Help -->
+    <details class="card help" id="help">
+      <summary><h2>How it works</h2><span class="muted small">New here? Start with this</span></summary>
+      <div class="help-body">
+        <ol class="help-steps">
+          <li>
+            <strong>Suggest films.</strong>
+            Add anything you'd like the club to watch to the <em>Film bank</em> using <em>Suggest a film</em>. There's no limit. A link or a one-line pitch helps sell it.
+          </li>
+          <li>
+            <strong>Star what you'd watch.</strong>
+            Browse the bank and tap ☆ on films you'd happily watch. Stars carry over between rounds, and the most-starred films get onto the ballot.
+          </li>
+          <li>
+            <strong>Vote on the ballot.</strong>
+            Each round has a ballot of <b data-setting="ballot">6</b> films, picked automatically: the <b data-setting="stars">4</b> most-starred, plus the ones that have waited longest. You get <b data-setting="votes">3</b> votes. Tap a film's circle to vote, and tap again to take it back. You can change your votes until voting closes.
+          </li>
+          <li>
+            <strong>Movie night.</strong>
+            Whoever's organising opens <em>Set or change movie night</em> and adds the date and place. Voting closes <b data-setting="close">24 hours</b> before. The film with the most votes wins, and ties go to the film that has waited longest.
+          </li>
+          <li>
+            <strong>After the night.</strong>
+            Someone presses <em>We watched it ✓</em>. The film moves to <em>Already watched</em> and a fresh ballot starts.
+          </li>
+        </ol>
+
+        <h3>Good to know</h3>
+        <ul class="help-faq">
+          <li><strong>Everyone's already seen a ballot film?</strong> Use <em>swap out</em> to replace it with another from the bank. It stays in the bank.</li>
+          <li><strong>Seen a bank film outside the club?</strong> Use <em>mark watched</em> on it.</li>
+          <li><strong>Night called off?</strong> Use <em>Cancel this night</em> in the movie night panel. Votes are kept, and voting stays open until a new night is set.</li>
+          <li><strong>No night set yet?</strong> Voting stays open and the top of the page shows which film is leading.</li>
+          <li><strong>Your name</strong> appears on your suggestions and votes. You can change it at the top right.</li>
+          <li><strong>New phone or cleared your browser?</strong> You'll need the club passcode again. Your votes stay with the old device for the current round.</li>
+          <li>Made a mistake? You can <em>remove</em> films you suggested, and <em>back to bank</em> undoes a "watched".</li>
+        </ul>
+      </div>
+    </details>
 
     <!-- Next movie night -->
     <section class="marquee" aria-label="Next movie night">
